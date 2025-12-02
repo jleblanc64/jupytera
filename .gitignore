@@ -1,0 +1,10 @@
+
+# Elastic Beanstalk Files
+.idea/
+__pycache__/
+paymatch.xlsx
+jupyter.ipynb
+kernel.lock
+kernel_to_token.json
+kernel_to_user.json
+docker
