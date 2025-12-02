@@ -2,7 +2,7 @@
 
 To run app: `bash docker.sh`. Open app in browser: `localhost:8888`
 
-Code:
+Code (generated with claude ai):
 
 ![](doc/0_code.png)
 
