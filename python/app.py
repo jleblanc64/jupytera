@@ -7,98 +7,35 @@ from IPython.display import display
 class DynamicTable:
     def __init__(self):
         self.rows = []
-        self.rows_container = widgets.VBox()
+        self.default = widgets.IntText(description="Default:", value=0, layout=widgets.Layout(width="200px"))
+        self.default.observe(lambda c: [cell.set_trait('value', str(c['new'])) for r in self.rows for cell in r[0] if not cell.value.strip()], 'value')
+        self.container = widgets.VBox()
 
-        # ---- Default value widget ----
-        self.default_value_input = widgets.IntText(
-            description="Default value:",
-            value=0,
-            layout=widgets.Layout(width="200px")
-        )
-        self.default_value_input.observe(self.on_default_change, names="value")
+        add_btn = widgets.Button(description="Add Row", button_style="success")
+        add_btn.on_click(lambda b: self.add_row())
 
-        # Add row button
-        self.add_btn = widgets.Button(description="Add Row", button_style="success")
-        self.add_btn.on_click(self.add_row)
+        display(self.default, add_btn, self.container,
+                solara.FileDownload(self.generate_excel, filename="table.xlsx", label="Download Excel"))
 
-        # Layout
-        display(self.default_value_input)
-        display(self.add_btn, self.rows_container)
+    def add_row(self):
+        cells = [widgets.Text(description=f"Col {i+1}", value=str(self.default.value)) for i in range(5)]
+        for c in cells:
+            c.observe(lambda ch, w=c: w.set_trait('value', str(self.default.value)) if not ch['new'].strip() else None, 'value')
 
-        # Solara download button
-        self.download_button = solara.FileDownload(
-            self.generate_excel,
-            filename="table.xlsx",
-            label="Download Excel"
-        )
-        display(self.download_button)
+        rm = widgets.Button(description="Remove", button_style="danger", layout=widgets.Layout(width="80px"))
+        hbox = widgets.HBox(cells + [rm])
+        rm.on_click(lambda b: (self.rows.remove(next(r for r in self.rows if r[1] == b)),
+                               setattr(self.container, 'children', [r[2] for r in self.rows])))
 
-    # ------------------------------------------------------------
-    # When default value changes → update all empty cells
-    # ------------------------------------------------------------
-    def on_default_change(self, change):
-        new_default = str(change["new"])
-        for row in self.rows:
-            for cell in row["widgets"]:
-                if cell.value.strip() == "":
-                    cell.value = new_default
+        self.rows.append((cells, rm, hbox))
+        self.container.children = [r[2] for r in self.rows]
 
-    # ------------------------------------------------------------
-    # Add a row with default values in empty cells
-    # ------------------------------------------------------------
-    def add_row(self, b=None):
-        default_str = str(self.default_value_input.value)
-
-        cells = []
-        for i in range(5):
-            t = widgets.Text(description=f"Col {i+1}", value=default_str)
-
-            # When user clears input, restore default value
-            def restore_default(change, text_widget=t):
-                if change["new"].strip() == "":
-                    text_widget.value = str(self.default_value_input.value)
-
-            t.observe(restore_default, names="value")
-            cells.append(t)
-
-        # Remove row button
-        remove_btn = widgets.Button(
-            description="Remove",
-            button_style="danger",
-            layout=widgets.Layout(width="80px")
-        )
-
-        def remove_row(btn):
-            self.rows = [r for r in self.rows if r['remove_btn'] != btn]
-            self.rows_container.children = [r['hbox'] for r in self.rows]
-
-        remove_btn.on_click(remove_row)
-
-        hbox = widgets.HBox(cells + [remove_btn])
-        self.rows.append({'widgets': cells, 'remove_btn': remove_btn, 'hbox': hbox})
-        self.rows_container.children += (hbox,)
-
-    # ------------------------------------------------------------
-    # Generate Excel with default value for any empty cell
-    # ------------------------------------------------------------
     def generate_excel(self):
-        default_val = self.default_value_input.value
+        df = pd.DataFrame([[c.value.strip() or self.default.value for c in r[0]] for r in self.rows],
+                          columns=[f"Col {i+1}" for i in range(5)])
+        buf = BytesIO()
+        df.to_excel(buf, index=False, sheet_name='Data', engine='openpyxl')
+        buf.seek(0)
+        return buf.read()
 
-        data = []
-        for row in self.rows:
-            processed = []
-            for cell in row['widgets']:
-                val = cell.value.strip()
-                processed.append(val if val != "" else default_val)
-            data.append(processed)
-
-        df = pd.DataFrame(data, columns=[f"Column {i+1}" for i in range(5)])
-
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data')
-        buffer.seek(0)
-        return buffer.read()
-
-# Initialize dynamic table
-table = DynamicTable()
+DynamicTable()
