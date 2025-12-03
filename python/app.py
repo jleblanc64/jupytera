@@ -3,6 +3,8 @@ import pandas as pd
 from io import BytesIO
 import ipywidgets as widgets
 from IPython.display import display
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill
 
 class DynamicTable:
     def __init__(self):
@@ -14,11 +16,17 @@ class DynamicTable:
         add_btn = widgets.Button(description="Add Row", button_style="success")
         add_btn.on_click(lambda b: self.add_row())
 
-        # Inject CSS for red cell
+        # Inject CSS for red, green, yellow cells
         display(widgets.HTML("""
         <style>
         .red-cell input {
             background-color: red !important;
+        }
+        .green-cell input {
+            background-color: lightgreen !important;
+        }
+        .yellow-cell input {
+            background-color: yellow !important;
         }
         </style>
         """))
@@ -28,9 +36,18 @@ class DynamicTable:
 
     def add_row(self):
         cells = [widgets.Text(description=f"Col {i+1}", value=str(self.default.value)) for i in range(5)]
-        # Make the first cell of the first row red
-        if len(self.rows) == 0:
+
+        row_index = len(self.rows)
+
+        # First row: red in col 2, green in col 3
+        if row_index == 0:
             cells[1].add_class('red-cell')
+            cells[2].add_class('green-cell')
+
+        # Second row: yellow directly below the red cell
+        if row_index == 1:
+            cells[1].add_class('yellow-cell')
+
         for c in cells:
             c.observe(lambda ch, w=c: w.set_trait('value', str(self.default.value)) if not ch['new'].strip() else None, 'value')
 
@@ -43,10 +60,27 @@ class DynamicTable:
         self.container.children = [r[2] for r in self.rows]
 
     def generate_excel(self):
-        df = pd.DataFrame([[c.value.strip() or self.default.value for c in r[0]] for r in self.rows],
-                          columns=[f"Col {i+1}" for i in range(5)])
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Data"
+
+        color_map = {
+            'red-cell': 'FF0000',
+            'green-cell': '90EE90',
+            'yellow-cell': 'FFFF00'
+        }
+
+        for r_idx, row in enumerate(self.rows, start=1):
+            for c_idx, cell in enumerate(row[0], start=1):
+                ws.cell(row=r_idx, column=c_idx, value=cell.value)
+                # Detect CSS classes from frontend widgets
+                if hasattr(cell, '_dom_classes'):
+                    for cls in cell._dom_classes:
+                        if cls in color_map:
+                            ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color=color_map[cls], end_color=color_map[cls], fill_type="solid")
+
         buf = BytesIO()
-        df.to_excel(buf, index=False, sheet_name='Data', engine='openpyxl')
+        wb.save(buf)
         buf.seek(0)
         return buf.read()
 
