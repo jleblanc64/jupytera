@@ -14,11 +14,23 @@ class DynamicTable:
         add_btn = widgets.Button(description="Add Row", button_style="success")
         add_btn.on_click(lambda b: self.add_row())
 
+        # Inject CSS for red cell
+        display(widgets.HTML("""
+        <style>
+        .red-cell input {
+            background-color: red !important;
+        }
+        </style>
+        """))
+
         display(self.default, add_btn, self.container,
                 solara.FileDownload(self.generate_excel, filename="table.xlsx", label="Download Excel"))
 
     def add_row(self):
         cells = [widgets.Text(description=f"Col {i+1}", value=str(self.default.value)) for i in range(5)]
+        # Make the first cell of the first row red
+        if len(self.rows) == 0:
+            cells[1].add_class('red-cell')
         for c in cells:
             c.observe(lambda ch, w=c: w.set_trait('value', str(self.default.value)) if not ch['new'].strip() else None, 'value')
 
