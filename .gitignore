@@ -7,5 +7,4 @@ jupyter.ipynb
 kernel.lock
 kernel_to_token.json
 kernel_to_user.json
-docker/*
-!docker/traefik.tar.gz
+docker/
