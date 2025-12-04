@@ -17,9 +17,24 @@ echo "Target:  $FULL_IMAGE_PATH"
 echo "---------------------"
 
 # 1. Enable APIs (Artifact Registry + Cloud Build)
-echo "1. Enabling required APIs..."
-gcloud services enable artifactregistry.googleapis.com \
-                       cloudbuild.googleapis.com
+check_and_enable_api() {
+  SERVICE_NAME=$1
+
+  # Check if the service is in the list of enabled services
+  # The output of gcloud services list is filtered by the service name.
+  # If the count is 0, the API is not enabled.
+  if [[ $(gcloud services list --enabled --filter="NAME=$SERVICE_NAME" --format="value(NAME)" | wc -l) -eq 0 ]]; then
+    echo "   ➡️ Enabling $SERVICE_NAME..."
+    gcloud services enable "$SERVICE_NAME"
+  else
+    echo "   ✅ $SERVICE_NAME is already enabled."
+  fi
+}
+
+# --- 1. Enable APIs (Only if needed) ---
+echo "1. Checking and enabling required APIs..."
+check_and_enable_api artifactregistry.googleapis.com
+check_and_enable_api cloudbuild.googleapis.com
 
 # 2. Create Repository (if it doesn't exist)
 echo "2. Checking for repository '$REPO_NAME'..."

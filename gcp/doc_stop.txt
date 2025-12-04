@@ -1,5 +1,0 @@
-SERVICE_NAME="helloworld-python"
-REGION="us-central1" # Recommended for free tier
-
-gcloud run services delete $SERVICE_NAME \
-  --region $REGION

@@ -8,7 +8,7 @@ import (
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello World from a minimal Go container!")
+		fmt.Fprintf(w, "Hello World from a minimal Go container 222222!")
 	})
 
 	port := os.Getenv("PORT")
