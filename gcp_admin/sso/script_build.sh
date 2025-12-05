@@ -11,7 +11,7 @@ TAG="latest"
 FULL_IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$TAG"
 
 gcloud config set project $PROJECT_ID
-#bash script_empty_repo.sh
+bash script_empty_repo.sh
 
 echo "--- Configuration ---"
 echo "Project: $PROJECT_ID"

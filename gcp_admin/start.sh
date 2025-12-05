@@ -5,11 +5,11 @@ bash ../gcp/stop.sh
 
 # --- 1. ARTIFACT REGISTRY CONFIG (Source Image) ---
 AR_REGION="us-central1"
-AR_REPO_NAME="hello-repo"
+AR_REPO_NAME="admin-repo"
 AR_IMAGE_NAME="admin"
 
 # --- 2. CLOUD RUN CONFIG (Target Service) ---
-CR_SERVICE_NAME="minimal-go-service"
+CR_SERVICE_NAME="admin"
 CR_REGION="us-central1"
 PROJECT_ID=$(gcloud config get-value project)
 
