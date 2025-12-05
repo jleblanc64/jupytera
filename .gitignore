@@ -8,3 +8,4 @@ kernel.lock
 kernel_to_token.json
 kernel_to_user.json
 docker/
+gcp/service.yaml

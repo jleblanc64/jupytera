@@ -54,7 +54,7 @@ fi
 # The '.' at the end specifies the current directory as the source
 echo "3. Submitting build to Google Cloud Build..."
 echo "   (This may take a minute as it provisions a server)"
-gcloud builds submit --tag $FULL_IMAGE_PATH .
+gcloud builds submit --tag $FULL_IMAGE_PATH /home/charles/IdeaProjects/jupytera/gcp/docker_cloud_run
 
 echo "--- Success! ---"
 echo "Build complete and image available at: $FULL_IMAGE_PATH"

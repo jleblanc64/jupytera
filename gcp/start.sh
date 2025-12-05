@@ -1,5 +1,7 @@
 #!/bin/bash
 
+bash stop.sh
+
 # --- 1. ARTIFACT REGISTRY CONFIG (Source Image) ---
 AR_REGION="us-central1"
 AR_REPO_NAME="hello-repo"
@@ -43,13 +45,54 @@ echo -e "\n2. Enabling Cloud Run API and deploying service ${CR_SERVICE_NAME}...
 
 gcloud services enable run.googleapis.com
 
-gcloud run deploy "$CR_SERVICE_NAME" \
-  --image "$DEPLOY_IMAGE_URL" \
-  --region "$CR_REGION" \
-  --platform managed \
-  --cpu 0.25 \
-  --memory 256Mi \
-  --min-instances 0 \
-  --allow-unauthenticated
+# Create the service.yaml file
+cat > service.yaml << EOF
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: $CR_SERVICE_NAME # Match your service name
+  annotations:
+    run.googleapis.com/ingress: "all"
+    run.googleapis.com/launch-stage: "GA"
+  labels:
+    cloud.googleapis.com/location: $CR_REGION # Match your region
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "1"
+        autoscaling.knative.dev/minScale: "0"
+        # The revision name is often a timestamp or hash, keep it generic
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: $DEPLOY_IMAGE_URL # Match your image URL
+        ports:
+        - containerPort: 8080 # Match your port
+        resources:
+          limits:
+            cpu: 2000m # Equivalent to --cpu 1
+            memory: 2048Mi # Equivalent to --memory 2048Mi
+        # 👇 This is the key part for the custom path health check
+        livenessProbe:
+          httpGet:
+            path: /kernel_count.txt # ⬅️ SPECIFY YOUR CUSTOM PATH HERE
+            port: 8080
+            httpHeaders:
+              - name: 'Custom-Header'
+                value: 'HealthCheck' # Optional: Add headers if needed
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 10
+EOF
+
+gcloud run services replace service.yaml \
+  --region "$CR_REGION"
+
+gcloud run services add-iam-policy-binding "$CR_SERVICE_NAME" \
+  --member="allUsers" \
+  --role="roles/run.invoker" \
+  --region="$CR_REGION"
 
 echo -e "\nDeployment complete. Check the output above for the Service URL."
