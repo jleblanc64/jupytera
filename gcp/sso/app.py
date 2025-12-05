@@ -1,9 +1,9 @@
 import os
 import json
 import requests
-# Import subprocess to run the shell script
 import subprocess
-from flask import Flask, redirect, url_for, session, request, render_template
+from flask import Flask, redirect, url_for, session, request, Response
+import time
 
 # --- SECURITY WARNING ---
 # In a real application, you must set these as environment variables or use a secret management system.
@@ -58,6 +58,146 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# New template for live build output
+BUILD_LIVE_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Output - Live</title>
+    <style>
+        body { 
+            font-family: 'Courier New', monospace; 
+            background-color: #1e1e1e; 
+            color: #d4d4d4; 
+            padding: 20px; 
+            margin: 0;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: auto; 
+            background: #252526; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); 
+        }
+        h1 { 
+            color: #4ec9b0; 
+            margin-bottom: 10px; 
+            font-size: 24px;
+        }
+        #output { 
+            background: #1e1e1e; 
+            padding: 15px; 
+            border-radius: 4px; 
+            min-height: 400px; 
+            max-height: 600px; 
+            overflow-y: auto; 
+            font-size: 14px; 
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .line { margin: 2px 0; }
+        .error { color: #f48771; }
+        .success { color: #4ec9b0; }
+        .info { color: #569cd6; }
+        #status { 
+            margin: 15px 0; 
+            padding: 10px; 
+            border-radius: 4px; 
+            font-weight: bold;
+        }
+        .running { background: #264f78; color: #4fc3f7; }
+        .completed { background: #0e5a0e; color: #4ec9b0; }
+        .failed { background: #5a1414; color: #f48771; }
+        .button { 
+            background-color: #0e639c; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            text-decoration: none; 
+            display: inline-block; 
+            margin-top: 15px;
+            font-family: sans-serif;
+        }
+        .button:hover { background-color: #1177bb; }
+        #spinner { display: inline-block; margin-left: 10px; }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .spinner-icon {
+            border: 3px solid #3a3a3a;
+            border-top: 3px solid #4fc3f7;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔨 Build Script Output</h1>
+        <div id="status" class="running">
+            Status: Running
+            <span id="spinner"><span class="spinner-icon"></span></span>
+        </div>
+        <div id="output"></div>
+        <a href="/" class="button">Go Back Home</a>
+    </div>
+
+    <script>
+        const outputDiv = document.getElementById('output');
+        const statusDiv = document.getElementById('status');
+        const spinner = document.getElementById('spinner');
+        const eventSource = new EventSource('/build/stream');
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'output') {
+                const line = document.createElement('div');
+                line.className = 'line';
+                line.textContent = data.content;
+                outputDiv.appendChild(line);
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            } else if (data.type === 'error') {
+                const line = document.createElement('div');
+                line.className = 'line error';
+                line.textContent = data.content;
+                outputDiv.appendChild(line);
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            } else if (data.type === 'complete') {
+                spinner.style.display = 'none';
+                if (data.success) {
+                    statusDiv.className = 'completed';
+                    statusDiv.innerHTML = '✅ Status: Completed Successfully';
+                } else {
+                    statusDiv.className = 'failed';
+                    statusDiv.innerHTML = `❌ Status: Failed (Exit Code: ${data.exit_code})`;
+                }
+                eventSource.close();
+            }
+        };
+
+        eventSource.onerror = function(event) {
+            spinner.style.display = 'none';
+            statusDiv.className = 'failed';
+            statusDiv.textContent = '❌ Status: Connection Error';
+            eventSource.close();
+        };
+    </script>
+</body>
+</html>
+"""
+
 @app.route("/")
 def index():
     if "email" in session:
@@ -80,74 +220,60 @@ def index():
         """
         return HTML_TEMPLATE % content
 
-# --- NEW ROUTE TO RUN BUILD SCRIPT ---
+# --- NEW ROUTE TO SHOW BUILD PAGE ---
 @app.route("/build")
 def run_build():
     if "email" not in session:
         return redirect(url_for("index"))
+    return BUILD_LIVE_TEMPLATE
 
-    gcloud_token = os.environ.get("GCLOUD_ACCESS_TOKEN", "")
-    command = ["bash", "script_build.sh"]
+# --- NEW ROUTE TO STREAM BUILD OUTPUT ---
+@app.route("/build/stream")
+def stream_build():
+    if "email" not in session:
+        return "Unauthorized", 401
 
-    custom_env = os.environ.copy()
-    if gcloud_token:
-        # This is the variable gcloud CLI checks for a pre-supplied token.
-        custom_env["CLOUDSDK_AUTH_ACCESS_TOKEN"] = gcloud_token
+    def generate():
+        gcloud_token = os.environ.get("GCLOUD_ACCESS_TOKEN", "")
+        command = ["bash", "script_build.sh"]
 
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,  # Don't raise exception on non-zero exit code
-            timeout=300,
-            env=custom_env
-        )
+        custom_env = os.environ.copy()
+        if gcloud_token:
+            custom_env["CLOUDSDK_AUTH_ACCESS_TOKEN"] = gcloud_token
 
-        # Combine stdout and stderr to capture all output
-        output_lines = result.stdout.splitlines()
-        error_lines = result.stderr.splitlines()
+        try:
+            # Start the subprocess with pipes for stdout and stderr
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+                env=custom_env
+            )
 
-        # Build HTML with both stdout and stderr
-        all_lines = output_lines + error_lines
-        output_html = "<ul>" + "".join(f"<li>{line}</li>" for line in all_lines) + "</ul>"
+            # Read stdout line by line
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    yield f"data: {json.dumps({'type': 'output', 'content': line.rstrip()})}\n\n"
 
-        # Or if you want to distinguish between normal output and errors:
-        output_html = ""
-        if output_lines:
-            output_html += "<strong>Output:</strong><ul>" + "".join(f"<li>{line}</li>" for line in output_lines) + "</ul>"
-        if error_lines:
-            output_html += "<strong>Errors:</strong><ul style='color: red;'>" + "".join(f"<li>{line}</li>" for line in error_lines) + "</ul>"
+            # Read stderr line by line
+            for line in iter(process.stderr.readline, ''):
+                if line:
+                    yield f"data: {json.dumps({'type': 'error', 'content': line.rstrip()})}\n\n"
 
-        content = f"""
-            <h1>✅ Build Script Succeeded</h1>
-            <p>The **script_build.sh** script ran successfully at {os.getcwd()}.</p>
-            <h2>Script Output:</h2>
-            {output_html}
-            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
-        """
-    except subprocess.CalledProcessError as e:
-        # Build failed message
-        output_lines = (e.stdout + "\n" + e.stderr).strip().splitlines()
-        output_html = "<ul>" + "".join(f"<li>{line}</li>" for line in output_lines) + "</ul>"
+            # Wait for the process to complete
+            process.wait()
 
-        content = f"""
-            <h1 class="error-message">❌ Build Script Failed</h1>
-            <p>The **script_build.sh** script returned an error (Exit Code: {e.returncode}).</p>
-            <h2>Error Output:</h2>
-            {output_html}
-            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
-        """
-    except Exception as e:
-        content = f"""
-            <h1 class="error-message">Error</h1>
-            <p>An unexpected error occurred while trying to run the script: {str(e)}</p>
-            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
-        """
+            # Send completion message
+            success = process.returncode == 0
+            yield f"data: {json.dumps({'type': 'complete', 'success': success, 'exit_code': process.returncode})}\n\n"
 
-    return HTML_TEMPLATE % content
-# -------------------------------------
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': f'Exception: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'success': False, 'exit_code': -1})}\n\n"
 
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route("/projects")
 def list_projects():
