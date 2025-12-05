@@ -100,7 +100,7 @@ def run_build():
             capture_output=True,
             text=True,
             check=False,  # Don't raise exception on non-zero exit code
-            timeout=30,
+            timeout=300,
             env=custom_env
         )
 

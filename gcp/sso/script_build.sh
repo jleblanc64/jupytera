@@ -1,10 +1,7 @@
 #!/bin/bash
 
-bash script_empty_repo.sh
-echo "hello"
-
 # --- CONFIGURATION ---
-PROJECT_ID=$(gcloud config get-value project)
+PROJECT_ID="dialog-flow-259821"
 REGION="us-central1"
 REPO_NAME="hello-repo"
 IMAGE_NAME="minimal-go-hello"
@@ -12,6 +9,9 @@ TAG="latest"
 
 # The destination address for the image
 FULL_IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$TAG"
+
+gcloud config set project $PROJECT_ID
+bash script_empty_repo.sh
 
 echo "--- Configuration ---"
 echo "Project: $PROJECT_ID"
@@ -55,7 +55,7 @@ fi
 # The '.' at the end specifies the current directory as the source
 echo "3. Submitting build to Google Cloud Build..."
 echo "   (This may take a minute as it provisions a server)"
-gcloud builds submit --tag $FULL_IMAGE_PATH /home/charles/IdeaProjects/jupytera/gcp/docker_cloud_run
+gcloud builds submit --tag $FULL_IMAGE_PATH voila
 
 echo "--- Success! ---"
 echo "Build complete and image available at: $FULL_IMAGE_PATH"
