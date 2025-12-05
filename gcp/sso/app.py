@@ -8,6 +8,9 @@ from flask import Flask, redirect, url_for, session, request, render_template
 # NEVER hardcode secrets in a production environment.
 CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "YOUR_GOOGLE_CLIENT_SECRET")
+GCLOUD_ACCESS_TOKEN = os.environ.get("GCLOUD_ACCESS_TOKEN", "")
+print(GCLOUD_ACCESS_TOKEN)
+
 # The email you want to exclusively allow access to
 ALLOWED_EMAIL = "dabadich@gmail.com"
 
@@ -35,11 +38,14 @@ HTML_TEMPLATE = """
     <title>Google SSO App</title>
     <style>
         body { font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f4f4f9; }
-        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); max-width: 400px; margin: auto; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); max-width: 600px; margin: auto; }
         h1 { color: #4285F4; margin-bottom: 20px; }
         .email-display { font-size: 1.2em; font-weight: bold; color: #34a853; margin: 20px 0; padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; }
-        .button { background-color: #fbbc05; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .button { background-color: #fbbc05; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; transition: background-color 0.3s; }
+        .button:hover { opacity: 0.9; }
         .error-message { color: #ea4335; font-weight: bold; }
+        ul { list-style: none; padding: 0; text-align: left; max-height: 300px; overflow-y: auto; border: 1px solid #e0e0e0; padding: 10px; border-radius: 6px; }
+        li { background: #f9f9f9; margin-bottom: 8px; padding: 10px; border-radius: 4px; border-left: 5px solid #4285F4; }
     </style>
 </head>
 <body>
@@ -54,12 +60,13 @@ HTML_TEMPLATE = """
 @app.route("/")
 def index():
     if "email" in session:
-        # User is logged in, show the main page with the email
+        # User is logged in, show the main page with the email and the new button
         content = f"""
             <h1>Authentication Successful!</h1>
             <p>You are logged in as:</p>
             <div class="email-display">{session['email']}</div>
-            <a href="{url_for('logout')}" class="button">Logout</a>
+            <a href="{url_for('list_projects')}" class="button" style="margin-top: 15px; background-color: #34a853;">List GCloud Projects</a>
+            <a href="{url_for('logout')}" class="button" style="margin-top: 15px; margin-left: 10px;">Logout</a>
         """
         return HTML_TEMPLATE % content
     else:
@@ -70,6 +77,77 @@ def index():
             <a href="{url_for('login')}" class="button">Login with Google</a>
         """
         return HTML_TEMPLATE % content
+
+@app.route("/projects")
+def list_projects():
+    if "email" not in session:
+        return redirect(url_for("index"))
+
+    # Check if a token is provided (it must be replaced for functionality)
+    if GCLOUD_ACCESS_TOKEN == "YOUR_HARDCODED_GCLOUD_TOKEN_HERE":
+        content = f"""
+            <h1 class="error-message">Configuration Error</h1>
+            <p>The GCLOUD_ACCESS_TOKEN placeholder must be replaced with a valid Google Cloud Access Token to fetch projects.</p>
+            <p>The application is otherwise functional.</p>
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
+        """
+        return HTML_TEMPLATE % content
+
+    # API Configuration
+    PROJECTS_API_URL = "https://cloudresourcemanager.googleapis.com/v1/projects"
+
+    # 1. Make the API request with the hardcoded token
+    headers = {
+        "Authorization": f"Bearer {GCLOUD_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.get(PROJECTS_API_URL, headers=headers)
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+
+        projects_data = response.json()
+        projects = projects_data.get("projects", [])
+
+        if projects:
+            # Format results for display
+            project_list_html = "<ul>"
+            for p in projects:
+                name = p.get('name', 'N/A')
+                id = p.get('projectId', 'N/A')
+                state = p.get('lifecycleState', 'N/A')
+                project_list_html += f"<li><strong>{name}</strong> (ID: {id}) - Status: {state}</li>"
+            project_list_html += "</ul>"
+
+            content = f"""
+                <h1>GCloud Projects Found: {len(projects)}</h1>
+                <p>Retrieved projects using the hardcoded token:</p>
+                {project_list_html}
+                <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
+            """
+        else:
+            content = """
+                <h1>GCloud Projects</h1>
+                <p>No projects found or the API returned an empty list.</p>
+                <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
+            """
+
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"HTTP {e.response.status_code}: {e.response.reason}"
+        content = f"""
+            <h1 class="error-message">GCloud API Failed</h1>
+            <p>Could not retrieve projects. The hardcoded token {GCLOUD_ACCESS_TOKEN} is likely invalid, expired, or unauthorized.</p>
+            <p class="error-message">Details: {error_msg}</p>
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
+        """
+    except Exception as e:
+        content = f"""
+            <h1 class="error-message">Error</h1>
+            <p>An unexpected error occurred: {str(e)}</p>
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
+        """
+
+    return HTML_TEMPLATE % content
 
 @app.route("/login")
 def login():
