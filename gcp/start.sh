@@ -60,6 +60,7 @@ spec:
   template:
     metadata:
       annotations:
+        run.googleapis.com/cpu-throttling: "false"
         autoscaling.knative.dev/maxScale: "1"
         autoscaling.knative.dev/minScale: "0"
         # The revision name is often a timestamp or hash, keep it generic
@@ -72,8 +73,8 @@ spec:
         - containerPort: 8080 # Match your port
         resources:
           limits:
-            cpu: 2000m # Equivalent to --cpu 1
-            memory: 2048Mi # Equivalent to --memory 2048Mi
+            cpu: 8000m
+            memory: 4096Mi
         # 👇 This is the key part for the custom path health check
         livenessProbe:
           httpGet:

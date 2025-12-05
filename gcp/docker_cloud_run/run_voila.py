@@ -1,27 +1,26 @@
-import logging
 import os
 import sys
+from pathlib import Path
 
-from ipystream.voila import patched_generator, auth_wall_limit, patch_voila
 from ipystream.voila.patch_voila import POOL_SIZE
-from ipystream.voila.utils import create_ipynb
+from voila.app import Voila
+from voila.static_file_handler import AllowListFileHandler
 
+def create_ipynb(path: str) -> Path:
+    content = """{"cells": [{
+      "cell_type": "code", "execution_count": null, "id": "run-cell", "metadata": {},"outputs": [],
+      "source": [
+        "from python.notebook import run\\n",
+        "run()"
+      ]}],
+      "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"""
 
-def patch():
-    # patch voila app
-    from voila.app import Voila
-    from voila.static_file_handler import AllowListFileHandler
+    file_path = Path(path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(content, encoding="utf-8")
+    return file_path
 
-    def patched_get_absolute_path(self, root, path):
-        return super(AllowListFileHandler, self).get_absolute_path(root, path)
-
-    AllowListFileHandler.get_absolute_path = patched_get_absolute_path
-    return Voila()
-
-def run(disable_logging):
-    # patched_generator.patch_voila_get_generator(enforce_PARAM_KEY_TOKEN=False)
-    # auth_wall_limit.patch(log_user_fun=None, token_to_user_fun=None)
-
+def run():
     NOTEBOOK = "jupyter.ipynb"
 
     os.environ["VOILA_APP"] = "1"
@@ -39,13 +38,12 @@ def run(disable_logging):
     create_ipynb(NOTEBOOK)
     sys.argv = ["voila", NOTEBOOK] + extra_args
 
-    # start Voila
-    voila_app = patch()
-    voila_app.initialize()
-    print("VOILA: http://localhost:8866")
+    def patched_get_absolute_path(self, root, path):
+        return super(AllowListFileHandler, self).get_absolute_path(root, path)
 
-    # if disable_logging:
-    #     logging.disable(logging.CRITICAL)
+    AllowListFileHandler.get_absolute_path = patched_get_absolute_path
+    voila_app = Voila()
+    voila_app.initialize()
     voila_app.start()
 
-run(disable_logging=False)
+run()
