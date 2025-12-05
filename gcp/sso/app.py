@@ -1,6 +1,8 @@
 import os
 import json
 import requests
+# Import subprocess to run the shell script
+import subprocess
 from flask import Flask, redirect, url_for, session, request, render_template
 
 # --- SECURITY WARNING ---
@@ -50,7 +52,6 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <!-- Content inserted here by Flask -->
         %s
     </div>
 </body>
@@ -60,13 +61,14 @@ HTML_TEMPLATE = """
 @app.route("/")
 def index():
     if "email" in session:
-        # User is logged in, show the main page with the email and the new button
+        # User is logged in, show the main page with the email and the new buttons
         content = f"""
             <h1>Authentication Successful!</h1>
             <p>You are logged in as:</p>
             <div class="email-display">{session['email']}</div>
             <a href="{url_for('list_projects')}" class="button" style="margin-top: 15px; background-color: #34a853;">List GCloud Projects</a>
-            <a href="{url_for('logout')}" class="button" style="margin-top: 15px; margin-left: 10px;">Logout</a>
+            <a href="{url_for('run_build')}" class="button" style="margin-top: 15px; background-color: #ff9800; margin-left: 10px;">Run Build Script</a>
+            <a href="{url_for('logout')}" class="button" style="margin-top: 15px; margin-left: 10px; background-color: #ea4335;">Logout</a>
         """
         return HTML_TEMPLATE % content
     else:
@@ -77,6 +79,75 @@ def index():
             <a href="{url_for('login')}" class="button">Login with Google</a>
         """
         return HTML_TEMPLATE % content
+
+# --- NEW ROUTE TO RUN BUILD SCRIPT ---
+@app.route("/build")
+def run_build():
+    if "email" not in session:
+        return redirect(url_for("index"))
+
+    gcloud_token = os.environ.get("GCLOUD_ACCESS_TOKEN", "")
+    command = ["bash", "script_build.sh"]
+
+    custom_env = os.environ.copy()
+    if gcloud_token:
+        # This is the variable gcloud CLI checks for a pre-supplied token.
+        custom_env["CLOUDSDK_AUTH_ACCESS_TOKEN"] = gcloud_token
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,  # Don't raise exception on non-zero exit code
+            timeout=30,
+            env=custom_env
+        )
+
+        # Combine stdout and stderr to capture all output
+        output_lines = result.stdout.splitlines()
+        error_lines = result.stderr.splitlines()
+
+        # Build HTML with both stdout and stderr
+        all_lines = output_lines + error_lines
+        output_html = "<ul>" + "".join(f"<li>{line}</li>" for line in all_lines) + "</ul>"
+
+        # Or if you want to distinguish between normal output and errors:
+        output_html = ""
+        if output_lines:
+            output_html += "<strong>Output:</strong><ul>" + "".join(f"<li>{line}</li>" for line in output_lines) + "</ul>"
+        if error_lines:
+            output_html += "<strong>Errors:</strong><ul style='color: red;'>" + "".join(f"<li>{line}</li>" for line in error_lines) + "</ul>"
+
+        content = f"""
+            <h1>✅ Build Script Succeeded</h1>
+            <p>The **script_build.sh** script ran successfully at {os.getcwd()}.</p>
+            <h2>Script Output:</h2>
+            {output_html}
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
+        """
+    except subprocess.CalledProcessError as e:
+        # Build failed message
+        output_lines = (e.stdout + "\n" + e.stderr).strip().splitlines()
+        output_html = "<ul>" + "".join(f"<li>{line}</li>" for line in output_lines) + "</ul>"
+
+        content = f"""
+            <h1 class="error-message">❌ Build Script Failed</h1>
+            <p>The **script_build.sh** script returned an error (Exit Code: {e.returncode}).</p>
+            <h2>Error Output:</h2>
+            {output_html}
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
+        """
+    except Exception as e:
+        content = f"""
+            <h1 class="error-message">Error</h1>
+            <p>An unexpected error occurred while trying to run the script: {str(e)}</p>
+            <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back Home</a>
+        """
+
+    return HTML_TEMPLATE % content
+# -------------------------------------
+
 
 @app.route("/projects")
 def list_projects():
