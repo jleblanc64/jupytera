@@ -6,7 +6,7 @@ bash ../gcp/stop.sh
 # --- 1. ARTIFACT REGISTRY CONFIG (Source Image) ---
 AR_REGION="us-central1"
 AR_REPO_NAME="hello-repo"
-AR_IMAGE_NAME="minimal-go-hello"
+AR_IMAGE_NAME="admin"
 
 # --- 2. CLOUD RUN CONFIG (Target Service) ---
 CR_SERVICE_NAME="minimal-go-service"

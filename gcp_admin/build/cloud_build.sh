@@ -6,7 +6,7 @@ bash delete_repo_images.sh
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 REPO_NAME="hello-repo"
-IMAGE_NAME="minimal-go-hello"
+IMAGE_NAME="admin"
 TAG="latest"
 
 # The destination address for the image
