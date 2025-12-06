@@ -1,15 +1,14 @@
 #!/bin/bash
 
-source sso/parse.sh
-bash ../gcp/stop.sh
+bash script_stop.sh
 
 # --- 1. ARTIFACT REGISTRY CONFIG (Source Image) ---
 AR_REGION="us-central1"
-AR_REPO_NAME="admin-repo"
-AR_IMAGE_NAME="admin"
+AR_REPO_NAME="hello-repo"
+AR_IMAGE_NAME="minimal-go-hello"
 
 # --- 2. CLOUD RUN CONFIG (Target Service) ---
-CR_SERVICE_NAME="admin"
+CR_SERVICE_NAME="minimal-go-service"
 CR_REGION="us-central1"
 PROJECT_ID=$(gcloud config get-value project)
 
@@ -71,23 +70,16 @@ spec:
       containers:
       - image: $DEPLOY_IMAGE_URL # Match your image URL
         ports:
-        - containerPort: 5000 # Match your port
+        - containerPort: 8080 # Match your port
         resources:
           limits:
-            cpu: 2000m
-            memory: 2048Mi
-        env:
-        - name: GOOGLE_CLIENT_ID
-          value: "$GOOGLE_CLIENT_ID"
-        - name: GOOGLE_CLIENT_SECRET
-          value: "$GOOGLE_CLIENT_SECRET"
-        - name: FLASK_SECRET_KEY
-          value: "$FLASK_SECRET_KEY"
+            cpu: 8000m
+            memory: 4096Mi
         # 👇 This is the key part for the custom path health check
         livenessProbe:
           httpGet:
-            path: /
-            port: 5000
+            path: /kernel_count.txt # ⬅️ SPECIFY YOUR CUSTOM PATH HERE
+            port: 8080
             httpHeaders:
               - name: 'Custom-Header'
                 value: 'HealthCheck' # Optional: Add headers if needed

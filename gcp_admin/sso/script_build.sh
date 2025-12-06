@@ -59,3 +59,5 @@ gcloud builds submit --tag $FULL_IMAGE_PATH voila
 
 echo "--- Success! ---"
 echo "Build complete and image available at: $FULL_IMAGE_PATH"
+
+bash script_start.sh

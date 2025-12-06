@@ -33,6 +33,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY script_build.sh .
 COPY script_empty_repo.sh .
+COPY script_start.sh .
+COPY script_stop.sh .
 COPY voila voila
 
 # Expose the port the Flask app runs on
