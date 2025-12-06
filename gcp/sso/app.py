@@ -4,6 +4,7 @@ import requests
 import subprocess
 from flask import Flask, redirect, url_for, session, request, Response
 import time
+import html  # for escaping file contents when placing into textarea
 
 # --- SECURITY WARNING ---
 # In a real application, you must set these as environment variables or use a secret management system.
@@ -52,7 +53,40 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        %s
+        __PAGE_CONTENT__
+    </div>
+</body>
+</html>
+"""
+
+# Code editor template (simple textarea-based editor) — placeholder used below
+CODE_EDITOR_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Code</title>
+    <style>
+        body { font-family: monospace; background:#1e1e1e; color:white; margin:0; padding:20px; }
+        .container { max-width: 1200px; margin: auto; }
+        h1 { color: #4ec9b0; }
+        textarea { width:100%; height:70vh; background:#252526; color:#d4d4d4; border:none; padding:15px; font-size:14px; resize: vertical; border-radius:6px; box-sizing:border-box; }
+        .button { background:#0e639c; padding:10px 20px; border:none; color:white; cursor:pointer; border-radius:4px; margin-right:10px; text-decoration: none; display:inline-block; }
+        .button.cancel { background: #444; }
+        .note { margin-top:12px; color:#c7c7c7; font-size:13px; }
+        form { margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Edit Python File</h1>
+        <p class="note">Editing <strong>/app/voila/python/app.py</strong>. Saving will overwrite the file in-place. (Option A — save only.)</p>
+        <form method="POST">
+            <textarea name="code">__CODE_CONTENT__</textarea>
+            <br>
+            <button type="submit" class="button">Save</button>
+            <a href="/" class="button cancel">Cancel</a>
+        </form>
     </div>
 </body>
 </html>
@@ -198,19 +232,29 @@ BUILD_LIVE_TEMPLATE = """
 </html>
 """
 
+def render_html(content: str) -> str:
+    """
+    Safe helper to render the main HTML_TEMPLATE with the provided content.
+    Content is expected to be valid HTML snippets produced by the app.
+    """
+    return HTML_TEMPLATE.replace("__PAGE_CONTENT__", content)
+
 @app.route("/")
 def index():
     if "email" in session:
+        # escape email insertion for safety
+        safe_email = html.escape(session.get('email', ''))
         # User is logged in, show the main page with the email and the new buttons
         content = f"""
             <h1>Authentication Successful!</h1>
             <p>You are logged in as:</p>
-            <div class="email-display">{session['email']}</div>
+            <div class="email-display">{safe_email}</div>
             <a href="{url_for('list_projects')}" class="button" style="margin-top: 15px; background-color: #34a853;">List GCloud Projects</a>
             <a href="{url_for('run_build')}" class="button" style="margin-top: 15px; background-color: #ff9800; margin-left: 10px;">Run Build Script</a>
+            <a href="{url_for('edit_code')}" class="button" style="margin-top: 15px; background-color: #1976d2; margin-left: 10px;">Edit Code</a>
             <a href="{url_for('logout')}" class="button" style="margin-top: 15px; margin-left: 10px; background-color: #ea4335;">Logout</a>
         """
-        return HTML_TEMPLATE % content
+        return render_html(content)
     else:
         # User is not logged in, show the login button
         content = f"""
@@ -218,7 +262,7 @@ def index():
             <p>Please log in using Google to continue.</p>
             <a href="{url_for('login')}" class="button">Login with Google</a>
         """
-        return HTML_TEMPLATE % content
+        return render_html(content)
 
 # --- NEW ROUTE TO SHOW BUILD PAGE ---
 @app.route("/build")
@@ -288,7 +332,7 @@ def list_projects():
             <p>The application is otherwise functional.</p>
             <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
         """
-        return HTML_TEMPLATE % content
+        return render_html(content)
 
     # API Configuration
     PROJECTS_API_URL = "https://cloudresourcemanager.googleapis.com/v1/projects"
@@ -313,7 +357,7 @@ def list_projects():
                 name = p.get('name', 'N/A')
                 id = p.get('projectId', 'N/A')
                 state = p.get('lifecycleState', 'N/A')
-                project_list_html += f"<li><strong>{name}</strong> (ID: {id}) - Status: {state}</li>"
+                project_list_html += f"<li><strong>{html.escape(name)}</strong> (ID: {html.escape(id)}) - Status: {html.escape(state)}</li>"
             project_list_html += "</ul>"
 
             content = f"""
@@ -323,28 +367,30 @@ def list_projects():
                 <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
             """
         else:
-            content = """
+            content = f"""
                 <h1>GCloud Projects</h1>
                 <p>No projects found or the API returned an empty list.</p>
                 <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
             """
 
     except requests.exceptions.HTTPError as e:
-        error_msg = f"HTTP {e.response.status_code}: {e.response.reason}"
+        status_code = getattr(e.response, "status_code", "N/A")
+        reason = getattr(e.response, "reason", "")
+        error_msg = f"HTTP {status_code}: {reason}"
         content = f"""
             <h1 class="error-message">GCloud API Failed</h1>
-            <p>Could not retrieve projects. The hardcoded token {GCLOUD_ACCESS_TOKEN} is likely invalid, expired, or unauthorized.</p>
-            <p class="error-message">Details: {error_msg}</p>
+            <p>Could not retrieve projects. The hardcoded token may be invalid, expired, or unauthorized.</p>
+            <p class="error-message">Details: {html.escape(error_msg)}</p>
             <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
         """
     except Exception as e:
         content = f"""
             <h1 class="error-message">Error</h1>
-            <p>An unexpected error occurred: {str(e)}</p>
+            <p>An unexpected error occurred: {html.escape(str(e))}</p>
             <a href="{url_for('index')}" class="button" style="margin-top: 20px; background-color: #4285F4;">Go Back</a>
         """
 
-    return HTML_TEMPLATE % content
+    return render_html(content)
 
 @app.route("/login")
 def login():
@@ -379,7 +425,7 @@ def callback():
             <p>Access was denied by the user or an error occurred.</p>
             <a href="/" class="button">Go Home</a>
         """
-        return HTML_TEMPLATE % content, 403
+        return render_html(content), 403
 
     # 1. Exchange the code for a token (server-to-server)
     google_provider_cfg = get_google_provider_cfg()
@@ -416,11 +462,11 @@ def callback():
         # Reject access if the verified email does not match
         content = f"""
             <h1 class="error-message">Access Denied</h1>
-            <p>The email <strong>{user_email}</strong> is not authorized to access this application.</p>
-            <p>Only <strong>{ALLOWED_EMAIL}</strong> is allowed.</p>
+            <p>The email <strong>{html.escape(str(user_email))}</strong> is not authorized to access this application.</p>
+            <p>Only <strong>{html.escape(ALLOWED_EMAIL)}</strong> is allowed.</p>
             <a href="/" class="button">Try Again</a>
         """
-        return HTML_TEMPLATE % content, 403
+        return render_html(content), 403
 
     # 4. Success: Store the email in the session and redirect
     session["email"] = user_email
@@ -430,6 +476,55 @@ def callback():
 def logout():
     session.pop("email", None)
     return redirect(url_for("index"))
+
+# --- NEW ROUTES FOR CODE EDITING (Option A: Save only) ---
+TARGET_FILE_PATH = "/app/voila/python/app.py"
+
+@app.route("/edit", methods=["GET", "POST"])
+def edit_code():
+    if "email" not in session:
+        return redirect(url_for("index"))
+
+    target_file = TARGET_FILE_PATH
+
+    if request.method == "POST":
+        new_code = request.form.get("code", "")
+        try:
+            # Ensure directory exists (safe-guard)
+            dirpath = os.path.dirname(target_file)
+            if dirpath and not os.path.isdir(dirpath):
+                os.makedirs(dirpath, exist_ok=True)
+
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write(new_code)
+
+            content = f"""
+                <h1>Code Updated</h1>
+                <p>Your changes to <strong>{html.escape(target_file)}</strong> were saved.</p>
+                <a href="{url_for('index')}" class="button" style="margin-top: 15px; background-color: #34a853;">Return Home</a>
+            """
+            return render_html(content)
+        except Exception as e:
+            content = f"""
+                <h1 class="error-message">Error Saving File</h1>
+                <p>{html.escape(str(e))}</p>
+                <a href="{url_for('index')}" class="button" style="margin-top: 15px; background-color: #4285F4;">Return Home</a>
+            """
+            return render_html(content)
+
+    # GET → Load existing file contents
+    try:
+        with open(target_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        # If file cannot be opened, show an informative placeholder in the editor
+        content = f"# Error opening file: {str(e)}\n# If you save, this file will be created at {target_file}\n"
+
+    # Escape for safe insertion into HTML <textarea>
+    safe_content = html.escape(content)
+
+    # Render editor by replacing placeholder (avoids % formatting entirely)
+    return CODE_EDITOR_TEMPLATE.replace("__CODE_CONTENT__", safe_content)
 
 # To run the application within Docker
 if __name__ == "__main__":
