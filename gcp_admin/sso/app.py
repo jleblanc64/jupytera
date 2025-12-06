@@ -22,7 +22,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 def get_redirect_uri():
-    return url_for("callback", _external=True, _scheme='https')
+    url = url_for("callback", _external=True, _scheme='https')
+    if "127.0.0.1" in url:
+        url = "http://127.0.0.1:5000/login/callback"
+
+    return url
 
 # ============================================================
 # SAFE CODE EDITOR TEMPLATE
@@ -233,11 +237,17 @@ def stream_build():
     if "email" not in session:
         return "Unauthorized", 401
     def generate():
+        gcloud_token = os.environ.get("GCLOUD_ACCESS_TOKEN", "")
         command = ["bash", "script_build.sh"]
+
+        custom_env = os.environ.copy()
+        if gcloud_token:
+            custom_env["CLOUDSDK_AUTH_ACCESS_TOKEN"] = gcloud_token
+
         try:
             process = subprocess.Popen(
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, bufsize=1
+                text=True, bufsize=1, env=custom_env
             )
             for line in iter(process.stdout.readline, ''):
                 yield f"data: {json.dumps({'type': 'output', 'content': line.rstrip()})}\n\n"
